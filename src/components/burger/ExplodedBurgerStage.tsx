@@ -1,10 +1,11 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import {
   motion,
   useScroll,
   useSpring,
   useTransform,
   useMotionValue,
+  useMotionValueEvent,
 } from "framer-motion";
 import type { BurgerLayer } from "../../data/burgerData";
 import { BURGER_LAYERS } from "../../data/burgerData";
@@ -23,98 +24,69 @@ export const ExplodedBurgerStage: React.FC<ExplodedBurgerStageProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
-  // Scroll Progress
+  // Raw scroll progress
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ["start start", "end end"],
   });
 
+  // Smooth spring physics
   const smoothProgress = useSpring(scrollYProgress, {
-    stiffness: 80,
-    damping: 24,
-    restDelta: 0.0005,
+    stiffness: 75,
+    damping: 26,
+    restDelta: 0.001,
   });
 
-  const [currentProgress, setCurrentProgress] = useState(0);
   const [activeLayerIndex, setActiveLayerIndex] = useState(0);
   const [hoveredLayerId, setHoveredLayerId] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
-  const [lastWhooshMilestone, setLastWhooshMilestone] = useState(0);
+  const [currentProgressVal, setCurrentProgressVal] = useState(0);
 
-  // Interactive 3D Stage Tilt with Mouse Parallax
+  // Interactive 3D Parallax Tilt
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
-  const smoothMouseX = useSpring(mouseX, { stiffness: 120, damping: 20 });
-  const smoothMouseY = useSpring(mouseY, { stiffness: 120, damping: 20 });
+  const smoothMouseX = useSpring(mouseX, { stiffness: 90, damping: 22 });
+  const smoothMouseY = useSpring(mouseY, { stiffness: 90, damping: 22 });
 
-  const stageRotateY = useTransform(smoothMouseX, [-400, 400], [-18, 18]);
-  const stageRotateX = useTransform(smoothMouseY, [-400, 400], [18, -18]);
+  const stageRotateY = useTransform(smoothMouseX, [-350, 350], [-14, 14]);
+  const stageRotateX = useTransform(smoothMouseY, [-350, 350], [14, -14]);
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!stageRef.current) return;
     const rect = stageRef.current.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     mouseX.set(e.clientX - centerX);
     mouseY.set(e.clientY - centerY);
-  };
+  }, [mouseX, mouseY]);
 
-  // Sync state with scroll progress
-  useEffect(() => {
-    const unsubscribe = smoothProgress.on("change", (latest) => {
-      setCurrentProgress(latest);
+  // High performance listener - only updates state when layer index actually changes
+  useMotionValueEvent(smoothProgress, "change", (latest) => {
+    // Update progress scalar for HUD dial (quantized to reduce render thrashing)
+    const rounded = Math.round(latest * 100) / 100;
+    if (Math.abs(rounded - currentProgressVal) >= 0.01) {
+      setCurrentProgressVal(rounded);
+    }
 
-      // Determine active layer
-      let bestIndex = 0;
-      let minDistance = 999;
-      BURGER_LAYERS.forEach((layer, idx) => {
-        const dist = Math.abs(latest - layer.focusProgress);
-        if (dist < minDistance) {
-          minDistance = dist;
-          bestIndex = idx;
-        }
-      });
-
-      if (bestIndex !== activeLayerIndex) {
-        setActiveLayerIndex(bestIndex);
-        if (soundEnabled && Math.abs(latest - lastWhooshMilestone) > 0.12) {
-          sounds.playWhoosh();
-          setLastWhooshMilestone(latest);
-        }
+    // Identify active layer by closest focusProgress
+    let bestIdx = 0;
+    let minDiff = 999;
+    for (let i = 0; i < BURGER_LAYERS.length; i++) {
+      const diff = Math.abs(latest - BURGER_LAYERS[i].focusProgress);
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestIdx = i;
       }
-    });
+    }
 
-    return () => unsubscribe();
-  }, [smoothProgress, activeLayerIndex, soundEnabled, lastWhooshMilestone]);
-
-  // Autoplay Tour Engine
-  useEffect(() => {
-    if (!isAutoPlaying || !containerRef.current) return;
-
-    let startTime: number | null = null;
-    const duration = 12000; // 12 seconds full explosion cycle
-    let animationFrame: number;
-
-    const animateScroll = (time: number) => {
-      if (!startTime) startTime = time;
-      const elapsed = time - startTime;
-      const targetProgress = (elapsed % duration) / duration;
-
-      if (containerRef.current) {
-        const totalHeight = containerRef.current.offsetHeight - window.innerHeight;
-        window.scrollTo({
-          top: containerRef.current.offsetTop + totalHeight * targetProgress,
-          behavior: "auto",
-        });
+    if (bestIdx !== activeLayerIndex) {
+      setActiveLayerIndex(bestIdx);
+      if (soundEnabled) {
+        sounds.playWhoosh();
       }
-
-      animationFrame = requestAnimationFrame(animateScroll);
-    };
-
-    animationFrame = requestAnimationFrame(animateScroll);
-    return () => cancelAnimationFrame(animationFrame);
-  }, [isAutoPlaying]);
+    }
+  });
 
   const handleSelectMilestone = (targetProgress: number) => {
     if (!containerRef.current) return;
@@ -133,7 +105,7 @@ export const ExplodedBurgerStage: React.FC<ExplodedBurgerStageProps> = ({
     <section
       id="deconstruct"
       ref={containerRef}
-      className="relative h-[420vh] bg-charcoal-950 text-white"
+      className="relative h-[450vh] bg-charcoal-950 text-white"
     >
       {/* Sticky Stage Viewport */}
       <div
@@ -145,37 +117,36 @@ export const ExplodedBurgerStage: React.FC<ExplodedBurgerStageProps> = ({
         }}
         className="sticky top-0 h-screen w-full overflow-hidden flex items-center justify-center select-none"
       >
-        {/* Ambient Dark Luxury Background Elements */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(35,25,15,0.4)_0%,rgba(6,6,8,0.95)_70%)] pointer-events-none" />
-        
-        {/* Subtle Gold Sparkles in Background */}
-        <div className="absolute inset-0 opacity-40 pointer-events-none">
+        {/* Background radial atmosphere */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(30,22,12,0.5)_0%,rgba(6,6,8,0.98)_75%)] pointer-events-none" />
+
+        {/* Ambient Gold Particles */}
+        <div className="absolute inset-0 opacity-30 pointer-events-none">
           <SparklesCore
             minSize={1}
-            maxSize={2.5}
-            particleDensity={35}
+            maxSize={2}
+            particleDensity={25}
             particleColor="#facc15"
           />
         </div>
 
-        {/* Dynamic Center Stage Glow */}
+        {/* Center Spotlight */}
         <motion.div
-          className="absolute w-[450px] h-[450px] md:w-[600px] md:h-[600px] rounded-full blur-[140px] pointer-events-none"
+          className="absolute w-[400px] h-[400px] sm:w-[520px] sm:h-[520px] rounded-full blur-[130px] pointer-events-none"
           animate={{
             backgroundColor:
-              currentProgress < 0.15
+              currentProgressVal < 0.15
                 ? "rgba(234, 179, 8, 0.12)"
-                : currentProgress > 0.4 && currentProgress < 0.7
+                : currentProgressVal > 0.4 && currentProgressVal < 0.7
                 ? "rgba(255, 87, 34, 0.15)"
-                : "rgba(217, 119, 6, 0.1)",
-            scale: [0.95, 1.05, 0.95],
+                : "rgba(217, 119, 6, 0.12)",
           }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          transition={{ duration: 1.2, ease: "easeOut" }}
         />
 
-        {/* 3D Perspective Exploded Burger Rig */}
+        {/* 3D Perspective Rig */}
         <motion.div
-          className="relative z-10 flex items-center justify-center w-[300px] h-[300px] sm:w-[380px] sm:h-[380px] md:w-[440px] md:h-[440px] lg:w-[480px] lg:h-[480px]"
+          className="relative z-10 flex items-center justify-center w-[280px] h-[280px] sm:w-[360px] sm:h-[360px] md:w-[420px] md:h-[420px] lg:w-[460px] lg:h-[460px]"
           style={{
             perspective: 1400,
             transformStyle: "preserve-3d",
@@ -209,7 +180,7 @@ export const ExplodedBurgerStage: React.FC<ExplodedBurgerStageProps> = ({
         {/* Interactive HUD Overlays */}
         <BurgerHUD
           activeLayer={activeLayer}
-          scrollProgress={currentProgress}
+          scrollProgress={currentProgressVal}
           onSelectMilestone={handleSelectMilestone}
           soundEnabled={soundEnabled}
           onToggleSound={() => {
@@ -226,7 +197,7 @@ export const ExplodedBurgerStage: React.FC<ExplodedBurgerStageProps> = ({
 };
 
 // =========================================================================
-// INDIVIDUAL BURGER LAYER MOTION ITEM (3D Perspective Physics)
+// INDIVIDUAL BURGER LAYER MOTION ITEM (Hardware-Accelerated 3D Transforms)
 // =========================================================================
 interface BurgerLayerMotionItemProps {
   layer: BurgerLayer;
@@ -249,28 +220,28 @@ const BurgerLayerMotionItem: React.FC<BurgerLayerMotionItemProps> = ({
   onLeave,
   onClick,
 }) => {
-  // Translate Y from 0 (stacked burger) to layer.offsetY (exploded)
+  // Smooth GPU translation along Y axis
   const translateY = useTransform(
     progress,
     [0, 1],
     [0, layer.offsetY]
   );
 
-  // Rotate X for exploded perspective spread
+  // Smooth 3D tilt rotation
   const rotateX = useTransform(
     progress,
     [0, 1],
     [0, layer.rotateX]
   );
 
-  // Scale adjustment for depth
+  // Subtle depth scale
   const scale = useTransform(
     progress,
     [0, 1],
     [1, layer.scale]
   );
 
-  // Dynamic Z-Index: ensure natural stacking when collapsed, and highlight when active
+  // Dynamic Z-Index for natural stacking
   const zIndex = isActive ? 50 : isHovered ? 45 : 30 - index;
 
   return (
@@ -282,21 +253,18 @@ const BurgerLayerMotionItem: React.FC<BurgerLayerMotionItemProps> = ({
         scale,
         zIndex,
         transformStyle: "preserve-3d",
+        willChange: "transform",
       }}
-      className="cursor-pointer group flex items-center justify-center"
+      className="cursor-pointer group flex items-center justify-center select-none"
       onMouseEnter={onHover}
       onMouseLeave={onLeave}
       onClick={onClick}
     >
-      <div className="relative w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 lg:w-[420px] lg:h-[420px] transition-transform duration-300 group-hover:scale-105">
+      <div className="relative w-60 h-60 sm:w-72 sm:h-72 md:w-88 md:h-88 lg:w-[400px] lg:h-[400px] transition-transform duration-200 group-hover:scale-105">
         
-        {/* Active Layer Golden Halo Rings */}
+        {/* Active Layer Golden Halo */}
         {isActive && (
-          <motion.div
-            layoutId="layerGlow"
-            className="absolute -inset-4 rounded-full border border-gold-400/40 bg-gold-500/5 blur-md pointer-events-none"
-            transition={{ type: "spring", stiffness: 300, damping: 25 }}
-          />
+          <div className="absolute -inset-4 rounded-full border border-gold-400/40 bg-gold-500/5 blur-md pointer-events-none animate-pulse" />
         )}
 
         {/* High Resolution Layer Image */}
@@ -304,29 +272,23 @@ const BurgerLayerMotionItem: React.FC<BurgerLayerMotionItemProps> = ({
           src={layer.image}
           alt={layer.tierName}
           draggable={false}
-          className={`w-full h-full object-contain filter transition-all duration-300 drop-shadow-[0_20px_35px_rgba(0,0,0,0.85)] ${
+          loading="eager"
+          className={`w-full h-full object-contain filter transition-all duration-200 ${
             isActive
-              ? "brightness-110 contrast-105 drop-shadow-[0_0_35px_rgba(234,179,8,0.35)]"
+              ? "brightness-110 contrast-105 drop-shadow-[0_10px_25px_rgba(234,179,8,0.3)]"
               : isHovered
               ? "brightness-105"
-              : "brightness-95 hover:brightness-105"
+              : "brightness-95 hover:brightness-105 drop-shadow-[0_15px_30px_rgba(0,0,0,0.8)]"
           }`}
         />
 
-        {/* Floating Mini Badge Indicator on Hover / Active */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{
-            opacity: isActive || isHovered ? 1 : 0,
-            scale: isActive || isHovered ? 1 : 0.8,
-            y: isActive ? -10 : 0,
-          }}
-          transition={{ duration: 0.2 }}
-          className="absolute -top-3 left-1/2 -translate-x-1/2 pointer-events-none hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-charcoal-900/95 border border-gold-500/40 text-gold-300 shadow-xl backdrop-blur-md text-[11px] font-mono whitespace-nowrap"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-gold-400 animate-ping" />
-          <span className="font-semibold">{layer.shortName}</span>
-        </motion.div>
+        {/* Floating Mini Badge Indicator */}
+        {isActive && (
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 pointer-events-none hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-charcoal-900/95 border border-gold-500/40 text-gold-300 shadow-xl backdrop-blur-md text-[11px] font-mono whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-gold-400 animate-ping" />
+            <span className="font-semibold">{layer.shortName}</span>
+          </div>
+        )}
       </div>
     </motion.div>
   );
