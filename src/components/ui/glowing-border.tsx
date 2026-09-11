@@ -12,12 +12,6 @@ export const GlowingBadge: React.FC<GlowingBadgeProps> = ({
   className,
   glowColor = "gold",
 }) => {
-  const glowGradients = {
-    gold: "from-gold-400 via-amber-500 to-amber-600",
-    ember: "from-ember-500 via-amber-500 to-red-600",
-    emerald: "from-emerald-400 via-teal-500 to-emerald-600",
-  };
-
   return (
     <div className={cn("relative inline-flex overflow-hidden rounded-full p-[1px] focus:outline-none", className)}>
       <span

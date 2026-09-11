@@ -1,5 +1,5 @@
 import React from "react";
-import { Flame, Sparkles, MapPin, Mail, ArrowRight, Award } from "lucide-react";
+import { Flame, MapPin, ArrowRight, Award } from "lucide-react";
 import { sounds } from "../../lib/sound";
 
 export const Footer: React.FC = () => {

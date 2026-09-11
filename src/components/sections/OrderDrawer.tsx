@@ -4,12 +4,7 @@ import {
   X,
   ShoppingBag,
   Wine,
-  Calendar,
-  Clock,
-  Users,
   CheckCircle,
-  Sparkles,
-  Flame,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { sounds } from "../../lib/sound";
@@ -25,7 +20,6 @@ export const OrderDrawer: React.FC<OrderDrawerProps> = ({ isOpen, onClose }) => 
   const [quantity, setQuantity] = useState(1);
   const [includeWinePairing, setIncludeWinePairing] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [tableGuests, setTableGuests] = useState(2);
   const [selectedTime, setSelectedTime] = useState("19:30");
 
   const basePrice = 38;

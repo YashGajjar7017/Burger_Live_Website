@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useRef } from "react";
 import { motion, useMotionTemplate, useMotionValue } from "framer-motion";
 import { cn } from "../../lib/utils";
 
@@ -17,7 +17,6 @@ export const CardSpotlight: React.FC<CardSpotlightProps> = ({
 }) => {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
-  const [isHovered, setIsHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
@@ -31,8 +30,6 @@ export const CardSpotlight: React.FC<CardSpotlightProps> = ({
     <div
       ref={cardRef}
       onMouseMove={handleMouseMove}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       className={cn(
         "group relative overflow-hidden rounded-2xl border border-white/10 bg-charcoal-900/80 backdrop-blur-xl transition-all duration-300 hover:border-gold-500/30",
         className
